@@ -1,0 +1,14 @@
+[package]
+name = "rai_l"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+llm = { path = "./llm" }
+tokio = { version = "1", features = ["full"] }
+
+[workspace]
+resolver = "3"
+members = [
+    "llm"
+]
