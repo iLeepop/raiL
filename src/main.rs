@@ -67,13 +67,13 @@ mod tests {
             )
             .expect("RaiLLM 初始化失败");
 
-        let propmt = r#"你是谁?"#;
+        let propmt = r#"你是谁?我爱吃土豆,你能猜出来我是谁吗?我很有名的,全世界很多电影都有我的身影,请给出你的回答。"#;
 
         let user_m = Message::new(Role::User, propmt);
 
         let mesaages = vec![user_m.to_chat_message().unwrap()];
 
-        match rllm.think(mesaages, 512u32).await {
+        match rllm.think(mesaages, 2048u32).await {
             Ok(r) => {
                 println!("{}", r);
             }
