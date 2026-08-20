@@ -6,7 +6,8 @@ edition = "2024"
 [dependencies]
 llm = { path = "./llm" }
 tokio = { version = "1", features = ["full"] }
-
+base64 = "0.22"
+dotenvy = "0.15"
 [workspace]
 resolver = "3"
 members = [
