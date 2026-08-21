@@ -43,7 +43,7 @@ mod tests {
 
         let mesaages = vec![user_m.to_chat_message().unwrap()];
 
-        match rllm.think(mesaages, 512u32).await {
+        match rllm.think(mesaages, RaiLLM::MAX_TOKENS_NORMAL).await {
             Ok(r) => {
                 println!("{}", r);
             }
@@ -67,13 +67,20 @@ mod tests {
             )
             .expect("RaiLLM 初始化失败");
 
-        let propmt = r#"你是谁?我爱吃土豆,你能猜出来我是谁吗?我很有名的,全世界很多电影都有我的身影,请给出你的回答。"#;
+        let propmt = r#"猜猜我是谁?我在草原上生活，有自己的城堡，还有爱我的老婆和儿子，可惜我没出息，没让老婆吃上羊肉。"#;
 
         let user_m = Message::new(Role::User, propmt);
+        let system_m = Message::new(
+            Role::System,
+            "先简短思考（不超过 200 字），然后直接给出最终答案",
+        );
 
-        let mesaages = vec![user_m.to_chat_message().unwrap()];
+        let mesaages = vec![
+            user_m.to_chat_message().unwrap(),
+            system_m.to_chat_message().unwrap(),
+        ];
 
-        match rllm.think(mesaages, 2048u32).await {
+        match rllm.think(mesaages, RaiLLM::MAX_TOKENS_SHORT).await {
             Ok(r) => {
                 println!("{}", r);
             }

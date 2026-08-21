@@ -8,7 +8,7 @@ use async_openai::{
     config::OpenAIConfig,
     error::OpenAIError,
     traits::RequestOptionsBuilder,
-    types::chat::{ChatCompletionRequestMessage, CreateChatCompletionRequestArgs},
+    types::chat::{ChatCompletionRequestMessage, CreateChatCompletionRequestArgs, FinishReason},
 };
 
 pub struct RaiLLM {
@@ -159,6 +159,23 @@ impl RaiLLM {
     }
 }
 
+impl RaiLLM {
+    const TOKENS_BASE: u32 = 512;
+    const TOKENS_BASE_UNIT: u32 = Self::TOKENS_BASE * 2;
+    pub const MAX_TOKENS_SHORT: u32 = 2 * Self::TOKENS_BASE_UNIT;
+    pub const MAX_TOKENS_NORMAL: u32 = 5 * Self::TOKENS_BASE_UNIT;
+    pub const MAX_TOKENS_LONG: u32 = 8 * Self::TOKENS_BASE_UNIT;
+    pub const MAX_TOKENS_REASONING: u32 = 12 * Self::TOKENS_BASE_UNIT;
+
+    /// 按供应商返回合适的默认 max_tokens；think 传 0 时使用
+    pub fn default_max_tokens(&self) -> u32 {
+        match self.provider {
+            Provider::DEEPSEEK | Provider::KIMI => Self::MAX_TOKENS_REASONING,
+            _ => Self::MAX_TOKENS_NORMAL,
+        }
+    }
+}
+
 impl Default for RaiLLM {
     fn default() -> Self {
         return RaiLLM {
@@ -177,6 +194,12 @@ impl Think for RaiLLM {
         messages: Vec<ChatCompletionRequestMessage>,
         max_tokens: u32,
     ) -> Result<String, Box<dyn Error>> {
+        // max_tokens 传 0 表示使用当前供应商的默认值
+        let max_tokens = if max_tokens == 0 {
+            self.default_max_tokens()
+        } else {
+            max_tokens
+        };
         // 本地推理服务（vLLM/Ollama）可能不需要 key，空 key 不写入请求头
         let mut config = OpenAIConfig::default().with_api_base(self.base_url);
         if !self.api_key.is_empty() {
@@ -221,11 +244,25 @@ impl Think for RaiLLM {
 
         for choice in response.choices {
             println!(
-                "{}: Role: {}  Content: {:?}",
-                choice.index, choice.message.role, choice.message.content
+                "{}: Role: {}  Content: {:?}  FinishReason: {:?}",
+                choice.index, choice.message.role, choice.message.content, choice.finish_reason
             );
+
+            // 推理模型（如 DeepSeek 推理类模型）会把 max_tokens 预算耗尽在思考上，
+            // 导致最终内容为空且 finish_reason=length —— 直接报错，不静默返回空
+            let content = choice.message.content.as_deref().unwrap_or_default();
+            if content.is_empty() && choice.finish_reason == Some(FinishReason::Length) {
+                return Err(format!(
+                    "模型返回空内容（finish_reason=length）：max_tokens={} 被推理过程耗尽，请调大 max_tokens",
+                    max_tokens
+                )
+                .into());
+            }
+            if !content.is_empty() {
+                return Ok(content.to_string());
+            }
         }
 
-        return Ok(String::from("Thinking"));
+        return Err("模型未返回任何内容".into());
     }
 }
