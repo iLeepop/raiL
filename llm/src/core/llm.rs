@@ -11,6 +11,52 @@ use async_openai::{
     types::chat::{ChatCompletionRequestMessage, CreateChatCompletionRequestArgs, FinishReason},
 };
 
+#[derive(Debug, Clone)]
+pub struct RaiLLMArgs {
+    pub provider: Option<Provider>,
+    pub base_url: Option<String>,
+    pub api_key: Option<String>,
+    pub model_id: String,
+}
+
+impl RaiLLMArgs {
+    pub fn with_provider(mut self, provider: Provider) -> Self {
+        self.provider = Some(provider);
+        self
+    }
+
+    pub fn with_base_url(mut self, base_url: impl Into<String>) -> Self {
+        self.base_url = Some(base_url.into());
+        self
+    }
+
+    pub fn with_api_key(mut self, api_key: impl Into<String>) -> Self {
+        self.api_key = Some(api_key.into());
+        self
+    }
+
+    pub fn with_model_id(mut self, model_id: impl Into<String>) -> Self {
+        self.model_id = model_id.into();
+        self
+    }
+
+    pub fn build(self) -> Result<RaiLLM, Box<dyn Error>> {
+        RaiLLM::default().init(self.provider, self.base_url, self.api_key, self.model_id)
+    }
+}
+
+impl Default for RaiLLMArgs {
+    fn default() -> Self {
+        return RaiLLMArgs {
+            provider: None,
+            base_url: None,
+            api_key: None,
+            model_id: String::new(),
+        };
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct RaiLLM {
     pub provider: Provider,
     pub base_url: String,

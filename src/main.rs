@@ -7,7 +7,7 @@ async fn main() {
 mod tests {
 
     use base64::{Engine, engine::general_purpose::STANDARD};
-    use llm::{Message, RaiLLM, Role, Think};
+    use llm::{Message, Provider, RaiLLM, RaiLLMArgs, Role, Think};
 
     #[tokio::main]
     #[test]
@@ -58,16 +58,13 @@ mod tests {
     async fn normal_chat() {
         dotenvy::dotenv().ok();
 
-        let rllm = RaiLLM::default()
-            .init(
-                Some(llm::Provider::DEEPSEEK),
-                None::<String>,
-                None::<String>,
-                "deepseek-v4-flash",
-            )
+        let rllm = RaiLLMArgs::default()
+            .with_provider(Provider::DEEPSEEK)
+            .with_model_id("deepseek-v4-flash")
+            .build()
             .expect("RaiLLM 初始化失败");
 
-        let propmt = r#"猜猜我是谁?我在草原上生活，有自己的城堡，还有爱我的老婆和儿子，可惜我没出息，没让老婆吃上羊肉。"#;
+        let propmt = r#"猜猜我是谁?我会飞，力大无穷，平时红内裤外穿。"#;
 
         let user_m = Message::new(Role::User, propmt);
         let system_m = Message::new(
