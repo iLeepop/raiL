@@ -1,4 +1,8 @@
-use std::error::Error;
+use std::{
+    collections::HashMap,
+    error::Error,
+    time::{Duration, SystemTime, UNIX_EPOCH},
+};
 
 use async_openai::types::chat::{
     ChatCompletionRequestAssistantMessage, ChatCompletionRequestMessage,
@@ -13,6 +17,8 @@ pub struct Message {
     pub role: Role,
     pub text: String,
     pub image_url: Option<String>,
+    pub timestamp: Duration,
+    pub meta_data: Option<HashMap<String, String>>,
 }
 
 impl Message {
@@ -21,12 +27,19 @@ impl Message {
             role,
             text: text.into(),
             image_url: None,
+            timestamp: SystemTime::now().duration_since(UNIX_EPOCH).unwrap(),
+            meta_data: None,
         };
     }
 
     pub fn with_image_url(mut self, image_url: impl Into<String>) -> Self {
         self.image_url = Some(image_url.into());
-        return self;
+        self
+    }
+
+    pub fn with_meta_data(mut self, meta_datas: HashMap<String, String>) -> Self {
+        self.meta_data = Some(meta_datas);
+        self
     }
 
     pub fn to_chat_message(self) -> Result<ChatCompletionRequestMessage, Box<dyn Error>> {

@@ -20,18 +20,18 @@ pub struct RaiLLMArgs {
 }
 
 impl RaiLLMArgs {
-    pub fn with_provider(mut self, provider: Provider) -> Self {
-        self.provider = Some(provider);
+    pub fn with_provider(mut self, provider: Option<Provider>) -> Self {
+        self.provider = provider;
         self
     }
 
-    pub fn with_base_url(mut self, base_url: impl Into<String>) -> Self {
-        self.base_url = Some(base_url.into());
+    pub fn with_base_url(mut self, base_url: Option<String>) -> Self {
+        self.base_url = base_url;
         self
     }
 
-    pub fn with_api_key(mut self, api_key: impl Into<String>) -> Self {
-        self.api_key = Some(api_key.into());
+    pub fn with_api_key(mut self, api_key: Option<String>) -> Self {
+        self.api_key = api_key;
         self
     }
 

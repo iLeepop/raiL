@@ -6,6 +6,7 @@ async fn main() {
 #[cfg(test)]
 mod tests {
 
+    use agent::{config::Config, core::BaseAgent, traits::Agent};
     use base64::{Engine, engine::general_purpose::STANDARD};
     use llm::{Message, Provider, RaiLLM, RaiLLMArgs, Role, Think};
 
@@ -58,26 +59,13 @@ mod tests {
     async fn normal_chat() {
         dotenvy::dotenv().ok();
 
-        let rllm = RaiLLMArgs::default()
-            .with_provider(Provider::DEEPSEEK)
-            .with_model_id("deepseek-v4-flash")
-            .build()
-            .expect("RaiLLM 初始化失败");
+        let config = Config::default()
+            .with_default_provider(Provider::DEEPSEEK)
+            .with_default_model("deepseek-v4-flash");
 
-        let propmt = r#"猜猜我是谁?我会飞，力大无穷，平时红内裤外穿。"#;
+        let b_a = BaseAgent::new("normal", "快速思考，简短回答，答案保持在200字以内", config);
 
-        let user_m = Message::new(Role::User, propmt);
-        let system_m = Message::new(
-            Role::System,
-            "先简短思考（不超过 200 字），然后直接给出最终答案",
-        );
-
-        let mesaages = vec![
-            user_m.to_chat_message().unwrap(),
-            system_m.to_chat_message().unwrap(),
-        ];
-
-        match rllm.think(mesaages, RaiLLM::MAX_TOKENS_SHORT).await {
+        match b_a.run("猜猜我是谁？我是皇后区的超级英雄！").await {
             Ok(r) => {
                 println!("{}", r);
             }

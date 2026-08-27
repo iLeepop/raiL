@@ -5,11 +5,13 @@ edition = "2024"
 
 [dependencies]
 llm = { path = "./llm" }
+agent = {path = "./agent"}
 tokio = { version = "1", features = ["full"] }
 base64 = "0.22"
 dotenvy = "0.15"
 [workspace]
 resolver = "3"
 members = [
-    "llm"
+    "llm",
+    "agent"
 ]
