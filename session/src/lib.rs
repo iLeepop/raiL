@@ -5,5 +5,9 @@
 //! `Session` 通过 `SessionStore` 持久化,并按 `id` 精确、`title` 模糊检索。
 
 pub mod error;
+pub mod event;
+pub mod session;
 
 pub use error::SessionError;
+pub use event::SessionEvent;
+pub use session::{Session, SessionStatus, SessionSummary};
