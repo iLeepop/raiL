@@ -5,7 +5,9 @@ use crate::error::SessionError;
 use crate::session::{Session, SessionStatus, SessionSummary};
 
 /// 检索条件。所有字段可选;`title` 为大小写不敏感的包含匹配。
-/// 结果按 `updated_at` 倒序,再应用 `offset`/`limit` 分页。
+/// `created_after`/`created_before` 为开区间:边界时刻本身被排除(严格大于/小于)。
+/// `limit` 超过 500 会被截断到 500。结果按 `updated_at` 倒序(相同时按 `id` 升序),
+/// 再应用 `offset`/`limit` 分页。
 #[derive(Debug, Clone)]
 pub struct SessionQuery {
     pub title: Option<String>,
@@ -75,7 +77,11 @@ pub(crate) fn filter_and_page(sessions: Vec<&Session>, query: &SessionQuery) -> 
         .filter(|s| matches(s, query))
         .map(SessionSummary::from)
         .collect();
-    out.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+    out.sort_by(|a, b| {
+        b.updated_at
+            .cmp(&a.updated_at)
+            .then_with(|| a.id.cmp(&b.id))
+    });
     let limit = query.limit.min(500);
     out.into_iter().skip(query.offset).take(limit).collect()
 }
@@ -134,5 +140,25 @@ mod tests {
         let huge = SessionQuery { limit: 9999, ..Default::default() };
         let out2 = filter_and_page(sessions.iter().collect::<Vec<&Session>>(), &huge);
         assert_eq!(out2.len(), 500); // 超过上限被截到 500
+    }
+
+    #[test]
+    fn matches_excludes_open_interval_boundaries() {
+        let t = Utc::now();
+        let mut s = session_with_updated("边界", t);
+        s.created_at = t; // created_at 精确等于边界时刻
+
+        // created_after == created_at → 开区间排除
+        let q_after = SessionQuery { created_after: Some(t), ..Default::default() };
+        assert!(!matches(&s, &q_after));
+        // created_before == created_at → 开区间排除
+        let q_before = SessionQuery { created_before: Some(t), ..Default::default() };
+        assert!(!matches(&s, &q_before));
+        // 严格大于 after 才命中
+        let q_after_ok = SessionQuery { created_after: Some(t - chrono::Duration::seconds(1)), ..Default::default() };
+        assert!(matches(&s, &q_after_ok));
+        // 严格小于 before 才命中
+        let q_before_ok = SessionQuery { created_before: Some(t + chrono::Duration::seconds(1)), ..Default::default() };
+        assert!(matches(&s, &q_before_ok));
     }
 }
