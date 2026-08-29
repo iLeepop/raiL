@@ -7,7 +7,9 @@
 pub mod error;
 pub mod event;
 pub mod session;
+pub mod store;
 
 pub use error::SessionError;
 pub use event::SessionEvent;
 pub use session::{Session, SessionStatus, SessionSummary};
+pub use store::{SessionQuery, SessionStore};
