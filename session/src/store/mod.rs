@@ -1,4 +1,5 @@
 pub mod memory;
+pub mod file;
 
 use chrono::{DateTime, Utc};
 use uuid::Uuid;

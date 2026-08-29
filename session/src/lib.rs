@@ -13,4 +13,5 @@ pub use error::SessionError;
 pub use event::SessionEvent;
 pub use session::{Session, SessionStatus, SessionSummary};
 pub use store::memory::InMemoryStore;
+pub use store::file::FileStore;
 pub use store::{SessionQuery, SessionStore};
