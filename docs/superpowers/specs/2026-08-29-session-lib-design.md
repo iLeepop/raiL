@@ -123,11 +123,11 @@ pub struct SessionSummary {
 ## 5. 会话空间 API
 
 ```rust
-pub struct SessionSpace { session: Session, store: Arc<dyn SessionStore> }
+pub struct SessionSpace<S: SessionStore> { session: Session, store: Arc<S> }
 
-impl SessionSpace {
-    pub fn new(store: Arc<dyn SessionStore>, title: impl Into<String>) -> Self;
-    pub fn resume(store: Arc<dyn SessionStore>, session: Session) -> Self;
+impl<S: SessionStore> SessionSpace<S> {
+    pub fn new(store: Arc<S>, title: impl Into<String>) -> Self;
+    pub fn resume(store: Arc<S>, session: Session) -> Self;
     pub fn with_meta(mut self, key: impl Into<String>, value: Value) -> Self;
 
     // 只读访问
@@ -160,7 +160,7 @@ impl SessionSpace {
 ### 使用示例(与 agent 手动集成)
 
 ```rust
-let store: Arc<dyn SessionStore> = Arc::new(FileStore::new("sessions/")?);
+let store: Arc<FileStore> = Arc::new(FileStore::new("sessions/")?);
 let mut space = SessionSpace::new(store.clone(), "订单助手")
     .with_meta("model", json!("Qwen2.5-72B"));
 
@@ -187,7 +187,7 @@ pub enum SessionError {
 
 实现 `Display` + `std::error::Error` + `From<std::io::Error>` / `From<serde_json::Error>`。
 
-并发模型:`store` 经 `Arc<dyn SessionStore>` 共享;`InMemoryStore` 内部 `Mutex`。多空间同时写同一 session 为 **last-write-wins**,文档注明;单空间持有会话是主用法,不提供乐观锁(YAGNI)。
+并发模型:`store` 经 `Arc<S>` 共享(泛型;原生 async fn in trait 不可 dyn 兼容 — 已实证 E0038,故设计不用 `Arc<dyn SessionStore>`);`InMemoryStore` 内部 `Mutex`。多空间同时写同一 session 为 **last-write-wins**,文档注明;单空间持有会话是主用法,不提供乐观锁(YAGNI)。
 
 ## 7. 对 llm crate 的增量改动
 
@@ -231,4 +231,4 @@ session/
 | D4 | title 检索 = contains;过滤/分页统一走 `SessionQuery`,不做全文索引 | 满足检索需求,保持 API 单一入口(YAGNI) |
 | D5 | 显式 persist,不自动刷盘 | checkpoint 语义,避免每条记录一次 IO |
 | D6 | 不依赖 agent crate | 避免循环依赖,SessionSpace 为通用层 |
-| D7 | 原生 async fn in trait,不用 async_trait | edition 2024 已稳定 |
+| D7 | 原生 async fn in trait,不用 async_trait;消费方用泛型 `Arc<S>` 而非 `Arc<dyn SessionStore>`(已实证 async fn 与 RPITIT 均不可 dyn 兼容,E0038) | edition 2024 已稳定;不加依赖;泛型匹配代码库既有风格 |

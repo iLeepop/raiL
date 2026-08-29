@@ -4,7 +4,7 @@
 
 **目标:** 在 raiL workspace 新增 `session` crate:会话空间(SessionSpace)记录空间内一切消息与操作,会话(Session)通过 id 精确检索、title 模糊检索,存储层可插拔(InMemory/File/SQLite 预留)。
 
-**架构:** 混合记录模型 — `Session { messages: Vec<Message>, events: Vec<SessionEvent> }`,消息复用 `llm::Message`,操作(工具调用/检查点/自定义)进 events。`SessionStore` trait 抽象存储,`SessionSpace` 持有 session + `Arc<dyn SessionStore>`,显式 `persist()` 落盘,`close()` 后只读。
+**架构:** 混合记录模型 — `Session { messages: Vec<Message>, events: Vec<SessionEvent> }`,消息复用 `llm::Message`,操作(工具调用/检查点/自定义)进 events。`SessionStore` trait 抽象存储,`SessionSpace` 持有 session + `Arc<S>`(泛型;原生 async fn trait 不可 dyn 兼容,已实证 E0038,故不用 `Arc<dyn SessionStore>`),显式 `persist()` 落盘,`close()` 后只读。
 
 **技术栈:** Rust edition 2024(原生 async fn in trait)、tokio(fs)、serde/serde_json、uuid v7、chrono(serde)。无 async_trait。
 
@@ -909,10 +909,9 @@ impl SessionStore for InMemoryStore {
 }
 ```
 
-`session/src/store/mod.rs` 顶部加:
+`session/src/store/mod.rs` 顶部加(注意:**只**加 `pub mod memory;`;`pub mod file;` 留到任务 6 与 file.rs 一起声明,提前声明会因文件不存在编译失败):
 
 ```rust
-pub mod file;
 pub mod memory;
 ```
 
@@ -1099,7 +1098,7 @@ impl SessionStore for FileStore {
 pub use store::file::FileStore;
 ```
 
-(`store/mod.rs` 已在任务 5 声明 `pub mod file;`,无需再改。)
+(`store/mod.rs` 需在本任务加 `pub mod file;` — 任务 5 有意未声明,此处与 file.rs 一起落地。)
 
 - [ ] **步骤 4:运行测试验证通过**
 
@@ -1109,8 +1108,7 @@ pub use store::file::FileStore;
 - [ ] **步骤 5:Commit**
 
 ```bash
-git add session/src/store/file.rs session/src/lib.rs
-git commit -m "feat(session): FileStore 原子写持久化"
+git add session/src/store/file.rs session/src/store/mod.rs session/src/lib.rs
 ```
 
 ---
@@ -1216,14 +1214,14 @@ use crate::store::SessionStore;
 
 /// 会话空间:持有会话与存储,记录空间内一切消息与操作。
 /// 写操作在会话 `Closed` 后返回 `SessionError::Closed`(只读)。
-pub struct SessionSpace {
+pub struct SessionSpace<S: SessionStore> {
     session: Session,
-    store: Arc<dyn SessionStore>,
+    store: Arc<S>,
 }
 
-impl SessionSpace {
+impl<S: SessionStore> SessionSpace<S> {
     /// 新建会话(不落盘;首次 `persist` 时创建)
-    pub fn new(store: Arc<dyn SessionStore>, title: impl Into<String>) -> Self {
+    pub fn new(store: Arc<S>, title: impl Into<String>) -> Self {
         Self {
             session: Session::new(title),
             store,
@@ -1231,7 +1229,7 @@ impl SessionSpace {
     }
 
     /// 恢复既有会话(可从 store 读出后继续)
-    pub fn resume(store: Arc<dyn SessionStore>, session: Session) -> Self {
+    pub fn resume(store: Arc<S>, session: Session) -> Self {
         Self { session, store }
     }
 
@@ -1343,7 +1341,7 @@ impl SessionSpace {
 //! use session::{SessionQuery, SessionSpace, SessionStore};
 //!
 //! # async fn demo() -> Result<(), Box<dyn std::error::Error>> {
-//! let store: Arc<dyn SessionStore> = Arc::new(FileStore::new("sessions/"));
+//! let store: Arc<FileStore> = Arc::new(FileStore::new("sessions/"));
 //! let mut space = SessionSpace::new(store.clone(), "订单助手")
 //!     .with_meta("model", serde_json::json!("Qwen2.5-72B"));
 //!
