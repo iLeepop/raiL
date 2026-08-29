@@ -15,8 +15,9 @@ use async_openai::types::chat::{
 
 use crate::enums::Role;
 use crate::traits::ToolCall;
+use serde::{Deserialize, Serialize};
 
-#[derive(Clone)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Message {
     pub role: Role,
     pub text: String,
@@ -120,5 +121,33 @@ impl Message {
                 return Ok(cm.into());
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn message_serde_roundtrip() {
+        let msg = Message::new(Role::User, "你好").with_image_url("data:image/png;base64,xx");
+        let json = serde_json::to_string(&msg).unwrap();
+        let back: Message = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.text, "你好");
+        assert!(matches!(back.role, Role::User));
+        assert_eq!(back.image_url.as_deref(), Some("data:image/png;base64,xx"));
+    }
+
+    #[test]
+    fn message_with_tool_calls_roundtrip() {
+        let msg = Message::new(Role::Assistant, "").with_tool_calls(vec![ToolCall {
+            id: "call_1".into(),
+            name: "calc".into(),
+            arguments: "{\"x\":1}".into(),
+        }]);
+        let json = serde_json::to_string(&msg).unwrap();
+        let back: Message = serde_json::from_str(&json).unwrap();
+        let tcs = back.tool_calls.expect("tool_calls 应存在");
+        assert_eq!(tcs[0].name, "calc");
     }
 }

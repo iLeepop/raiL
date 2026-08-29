@@ -1,9 +1,11 @@
+use serde::{Deserialize, Serialize};
+
 use std::error::Error;
 
 use async_openai::types::chat::{ChatCompletionRequestMessage, ChatCompletionTools};
 
 /// 模型发起的一次工具调用请求
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolCall {
     pub id: String,
     pub name: String,
