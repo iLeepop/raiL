@@ -26,6 +26,10 @@ impl Default for SessionQuery {
 }
 
 /// 会话存储抽象:多后端可插拔(InMemory / File / 预留 SQLite)。
+// 决策(规格 D7):保持原生 async fn in trait,不引入 async_trait。
+// 已实证:原生 async fn 与 RPITIT 在 stable 均不可 dyn 兼容(E0038),
+// 因此本库不消费 dyn SessionStore,消费方(如 SessionSpace)使用泛型 Arc<S>。
+#[allow(async_fn_in_trait)]
 pub trait SessionStore: Send + Sync {
     /// 新建会话;id 已存在返回 `AlreadyExists`
     async fn create(&self, session: &Session) -> Result<(), SessionError>;
