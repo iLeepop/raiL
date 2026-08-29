@@ -11,6 +11,8 @@ pub struct Config {
     pub debug: bool,
     pub log_level: String,
     pub max_history_len: Option<u32>,
+    pub max_tool_rounds: u32,
+    pub max_reflection_rounds: u32,
 }
 
 impl Config {
@@ -24,6 +26,8 @@ impl Config {
         debug: bool,
         log_level: impl Into<String>,
         max_history_len: u32,
+        max_tool_rounds: u32,
+        max_reflection_rounds: u32,
     ) -> Self {
         return Config {
             default_model: Some(model.into()),
@@ -35,6 +39,8 @@ impl Config {
             debug,
             log_level: log_level.into(),
             max_history_len: Some(max_history_len),
+            max_tool_rounds,
+            max_reflection_rounds,
         };
     }
 
@@ -82,6 +88,16 @@ impl Config {
         self.max_history_len = Some(max_history_len);
         self
     }
+
+    pub fn with_max_tool_rounds(mut self, max_tool_rounds: u32) -> Self {
+        self.max_tool_rounds = max_tool_rounds;
+        self
+    }
+
+    pub fn with_max_reflection_rounds(mut self, max_reflection_rounds: u32) -> Self {
+        self.max_reflection_rounds = max_reflection_rounds;
+        self
+    }
 }
 
 impl Default for Config {
@@ -96,6 +112,8 @@ impl Default for Config {
             debug: false,
             log_level: String::from("info"),
             max_history_len: None,
+            max_tool_rounds: 8,
+            max_reflection_rounds: 3,
         };
     }
 }

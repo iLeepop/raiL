@@ -2,14 +2,18 @@ use std::env;
 use std::error::Error;
 
 use crate::enums::Provider;
-use crate::traits::Think;
+use crate::traits::{Think, ThinkOutput, ToolCall};
 use async_openai::{
     Client,
     config::OpenAIConfig,
     error::OpenAIError,
     traits::RequestOptionsBuilder,
-    types::chat::{ChatCompletionRequestMessage, CreateChatCompletionRequestArgs, FinishReason},
+    types::chat::{
+        ChatCompletionMessageToolCalls, ChatCompletionRequestMessage, ChatCompletionTools,
+        CreateChatCompletionRequestArgs, FinishReason,
+    },
 };
+use futures_util::StreamExt;
 
 #[derive(Debug, Clone)]
 pub struct RaiLLMArgs {
@@ -233,82 +237,227 @@ impl Default for RaiLLM {
     }
 }
 
+/// 统一错误提取:async-openai 的 ApiError.code 是 Option<String>,而 vLLM 返回整数 code,
+/// 反序列化失败导致 JSONDeserialize 掩盖真实错误信息——手动提取 message
+fn map_openai_error(e: &OpenAIError) -> String {
+    match e {
+        OpenAIError::JSONDeserialize(_, raw) => {
+            let parsed = serde_json::from_str::<serde_json::Value>(raw).ok();
+            parsed
+                .as_ref()
+                .and_then(|v| v.pointer("/error/message"))
+                .and_then(|m| m.as_str())
+                .map(String::from)
+                .unwrap_or_else(|| e.to_string())
+        }
+        _ => e.to_string(),
+    }
+}
+
 impl Think for RaiLLM {
     // 实际调用模型能力
-    async fn think(
+    fn think(
         self,
         messages: Vec<ChatCompletionRequestMessage>,
+        tools: &[ChatCompletionTools],
         max_tokens: u32,
-    ) -> Result<String, Box<dyn Error>> {
-        // max_tokens 传 0 表示使用当前供应商的默认值
-        let max_tokens = if max_tokens == 0 {
-            self.default_max_tokens()
-        } else {
-            max_tokens
-        };
-        // 本地推理服务（vLLM/Ollama）可能不需要 key，空 key 不写入请求头
-        let mut config = OpenAIConfig::default().with_api_base(self.base_url);
-        if !self.api_key.is_empty() {
-            config = config.with_api_key(self.api_key);
-        }
-
-        let client = Client::with_config(config);
-
-        let request = CreateChatCompletionRequestArgs::default()
-            .max_tokens(max_tokens)
-            .model(self.model_id)
-            .messages(messages)
-            .build()?;
-
-        let response = match client
-            .chat()
-            .query(&vec![("limit", 10)])?
-            .create(request)
-            .await
-        {
-            Ok(r) => r,
-            Err(e) => {
-                // async-openai 的 ApiError.code 是 Option<String>，而 vLLM 返回整数 code，
-                // 反序列化失败导致 JSONDeserialize 掩盖真实错误信息——手动提取 message
-                let msg = match &e {
-                    OpenAIError::JSONDeserialize(_, raw) => {
-                        let parsed = serde_json::from_str::<serde_json::Value>(raw).ok();
-                        parsed
-                            .as_ref()
-                            .and_then(|v| v.pointer("/error/message"))
-                            .and_then(|m| m.as_str())
-                            .map(String::from)
-                            .unwrap_or_else(|| e.to_string())
-                    }
-                    _ => e.to_string(),
-                };
-                return Err(msg.into());
+    ) -> impl Future<Output = Result<ThinkOutput, Box<dyn Error>>> + Send {
+        async move {
+            // max_tokens 传 0 表示使用当前供应商的默认值
+            let max_tokens = if max_tokens == 0 {
+                self.default_max_tokens()
+            } else {
+                max_tokens
+            };
+            // 本地推理服务（vLLM/Ollama）可能不需要 key，空 key 不写入请求头
+            let mut config = OpenAIConfig::default().with_api_base(self.base_url);
+            if !self.api_key.is_empty() {
+                config = config.with_api_key(self.api_key);
             }
-        };
 
-        println!("\nResponse:\n");
+            let client = Client::with_config(config);
 
-        for choice in response.choices {
-            println!(
-                "{}: Role: {}  Content: {:?}  FinishReason: {:?}",
-                choice.index, choice.message.role, choice.message.content, choice.finish_reason
-            );
+            let mut request_args = CreateChatCompletionRequestArgs::default();
+            request_args.max_tokens(max_tokens);
+            request_args.model(self.model_id);
+            request_args.messages(messages);
+            if !tools.is_empty() {
+                request_args.tools(tools.to_vec());
+            }
+            let request = request_args.build()?;
 
-            // 推理模型（如 DeepSeek 推理类模型）会把 max_tokens 预算耗尽在思考上，
-            // 导致最终内容为空且 finish_reason=length —— 直接报错，不静默返回空
-            let content = choice.message.content.as_deref().unwrap_or_default();
-            if content.is_empty() && choice.finish_reason == Some(FinishReason::Length) {
+            let response = match client
+                .chat()
+                .query(&vec![("limit", 10)])?
+                .create(request)
+                .await
+            {
+                Ok(r) => r,
+                Err(e) => return Err(map_openai_error(&e).into()),
+            };
+
+            println!("\nResponse:\n");
+
+            for choice in response.choices {
+                println!(
+                    "{}: Role: {}  Content: {:?}  FinishReason: {:?}",
+                    choice.index, choice.message.role, choice.message.content, choice.finish_reason
+                );
+
+                // 模型请求调用工具:优先返回 tool_calls,此时 content 可能为空
+                if let Some(tcalls) = choice.message.tool_calls {
+                    let tool_calls = tcalls
+                        .into_iter()
+                        .filter_map(|tc| match tc {
+                            ChatCompletionMessageToolCalls::Function(f) => Some(ToolCall {
+                                id: f.id,
+                                name: f.function.name,
+                                arguments: f.function.arguments,
+                            }),
+                            ChatCompletionMessageToolCalls::Custom(_) => None,
+                        })
+                        .collect::<Vec<_>>();
+                    if !tool_calls.is_empty() {
+                        return Ok(ThinkOutput {
+                            content: choice.message.content.clone(),
+                            tool_calls,
+                        });
+                    }
+                }
+
+                // 推理模型（如 DeepSeek 推理类模型）会把 max_tokens 预算耗尽在思考上，
+                // 导致最终内容为空且 finish_reason=length —— 直接报错，不静默返回空
+                let content = choice.message.content.as_deref().unwrap_or_default();
+                if content.is_empty() && choice.finish_reason == Some(FinishReason::Length) {
+                    return Err(format!(
+                        "模型返回空内容（finish_reason=length）：max_tokens={} 被推理过程耗尽，请调大 max_tokens",
+                        max_tokens
+                    )
+                    .into());
+                }
+                if !content.is_empty() {
+                    return Ok(ThinkOutput {
+                        content: Some(content.to_string()),
+                        tool_calls: Vec::new(),
+                    });
+                }
+            }
+
+            return Err("模型未返回任何内容".into());
+        }
+    }
+
+    fn think_stream<F>(
+        self,
+        messages: Vec<ChatCompletionRequestMessage>,
+        tools: &[ChatCompletionTools],
+        max_tokens: u32,
+        on_delta: F,
+    ) -> impl Future<Output = Result<ThinkOutput, Box<dyn Error>>> + Send
+    where
+        F: FnMut(&str) + Send,
+    {
+        async move {
+            let mut on_delta = on_delta;
+            // max_tokens 传 0 表示使用当前供应商的默认值
+            let max_tokens = if max_tokens == 0 {
+                self.default_max_tokens()
+            } else {
+                max_tokens
+            };
+            // 本地推理服务（vLLM/Ollama）可能不需要 key，空 key 不写入请求头
+            let mut config = OpenAIConfig::default().with_api_base(self.base_url);
+            if !self.api_key.is_empty() {
+                config = config.with_api_key(self.api_key);
+            }
+
+            let client = Client::with_config(config);
+
+            let mut request_args = CreateChatCompletionRequestArgs::default();
+            request_args.max_tokens(max_tokens);
+            request_args.model(self.model_id);
+            request_args.messages(messages);
+            request_args.stream(true);
+            if !tools.is_empty() {
+                request_args.tools(tools.to_vec());
+            }
+            let request = request_args.build()?;
+
+            let mut stream = client
+                .chat()
+                .query(&vec![("limit", 10)])?
+                .create_stream(request)
+                .await
+                .map_err(|e| map_openai_error(&e))?;
+
+            let mut content = String::new();
+            // 按 index 聚合 tool_call 增量:(id, name, arguments)
+            let mut tool_calls: Vec<(String, String, String)> = Vec::new();
+            let mut finish_reason: Option<FinishReason> = None;
+
+            while let Some(chunk) = stream.next().await {
+                let chunk = chunk.map_err(|e| map_openai_error(&e))?;
+                for choice in chunk.choices {
+                    if choice.finish_reason.is_some() {
+                        finish_reason = choice.finish_reason;
+                    }
+                    let delta = choice.delta;
+                    if let Some(c) = delta.content {
+                        on_delta(&c);
+                        content.push_str(&c);
+                    }
+                    if let Some(tcs) = delta.tool_calls {
+                        for tc in tcs {
+                            let idx = tc.index as usize;
+                            while tool_calls.len() <= idx {
+                                tool_calls.push((String::new(), String::new(), String::new()));
+                            }
+                            let slot = &mut tool_calls[idx];
+                            if let Some(id) = tc.id {
+                                slot.0 = id;
+                            }
+                            if let Some(f) = tc.function {
+                                if let Some(name) = f.name {
+                                    slot.1.push_str(&name);
+                                }
+                                if let Some(args) = f.arguments {
+                                    slot.2.push_str(&args);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            let tool_calls: Vec<ToolCall> = tool_calls
+                .into_iter()
+                .map(|(id, name, arguments)| ToolCall {
+                    id,
+                    name,
+                    arguments,
+                })
+                .collect();
+
+            // 与 think 保持一致的防御:空内容 + finish=length 报错
+            if content.is_empty()
+                && tool_calls.is_empty()
+                && finish_reason == Some(FinishReason::Length)
+            {
                 return Err(format!(
                     "模型返回空内容（finish_reason=length）：max_tokens={} 被推理过程耗尽，请调大 max_tokens",
                     max_tokens
                 )
                 .into());
             }
-            if !content.is_empty() {
-                return Ok(content.to_string());
-            }
-        }
 
-        return Err("模型未返回任何内容".into());
+            Ok(ThinkOutput {
+                content: if content.is_empty() {
+                    None
+                } else {
+                    Some(content)
+                },
+                tool_calls,
+            })
+        }
     }
 }

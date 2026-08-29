@@ -5,20 +5,28 @@ use std::{
 };
 
 use async_openai::types::chat::{
-    ChatCompletionRequestAssistantMessage, ChatCompletionRequestMessage,
-    ChatCompletionRequestMessageContentPartImage, ChatCompletionRequestMessageContentPartText,
-    ChatCompletionRequestSystemMessage, ChatCompletionRequestToolMessage,
-    ChatCompletionRequestUserMessageArgs, ChatCompletionRequestUserMessageContentPart, ImageUrl,
+    ChatCompletionMessageToolCall, ChatCompletionMessageToolCalls,
+    ChatCompletionRequestAssistantMessage, ChatCompletionRequestAssistantMessageArgs,
+    ChatCompletionRequestMessage, ChatCompletionRequestMessageContentPartImage,
+    ChatCompletionRequestMessageContentPartText, ChatCompletionRequestSystemMessage,
+    ChatCompletionRequestToolMessageArgs, ChatCompletionRequestUserMessageArgs,
+    ChatCompletionRequestUserMessageContentPart, FunctionCall, ImageUrl,
 };
 
 use crate::enums::Role;
+use crate::traits::ToolCall;
 
+#[derive(Clone)]
 pub struct Message {
     pub role: Role,
     pub text: String,
     pub image_url: Option<String>,
     pub timestamp: Duration,
     pub meta_data: Option<HashMap<String, String>>,
+    /// Role::Tool 时必填:对应的 assistant tool_call id
+    pub tool_call_id: Option<String>,
+    /// Role::Assistant 时携带:模型发起的工具调用(回显给 API 用)
+    pub tool_calls: Option<Vec<ToolCall>>,
 }
 
 impl Message {
@@ -29,6 +37,8 @@ impl Message {
             image_url: None,
             timestamp: SystemTime::now().duration_since(UNIX_EPOCH).unwrap(),
             meta_data: None,
+            tool_call_id: None,
+            tool_calls: None,
         };
     }
 
@@ -39,6 +49,16 @@ impl Message {
 
     pub fn with_meta_data(mut self, meta_datas: HashMap<String, String>) -> Self {
         self.meta_data = Some(meta_datas);
+        self
+    }
+
+    pub fn with_tool_call_id(mut self, tool_call_id: impl Into<String>) -> Self {
+        self.tool_call_id = Some(tool_call_id.into());
+        self
+    }
+
+    pub fn with_tool_calls(mut self, tool_calls: Vec<ToolCall>) -> Self {
+        self.tool_calls = Some(tool_calls);
         self
     }
 
@@ -65,11 +85,39 @@ impl Message {
             }
             Role::System => return Ok(ChatCompletionRequestSystemMessage::from(self.text).into()),
             Role::Assistant => {
+                if let Some(tool_calls) = self.tool_calls {
+                    let tool_calls: Vec<_> = tool_calls
+                        .into_iter()
+                        .map(|tc| {
+                            ChatCompletionMessageToolCalls::Function(
+                                ChatCompletionMessageToolCall {
+                                    id: tc.id,
+                                    function: FunctionCall {
+                                        name: tc.name,
+                                        arguments: tc.arguments,
+                                    },
+                                },
+                            )
+                        })
+                        .collect();
+                    let mut args = ChatCompletionRequestAssistantMessageArgs::default();
+                    args.tool_calls(tool_calls);
+                    if !self.text.is_empty() {
+                        args.content(self.text);
+                    }
+                    return Ok(args.build()?.into());
+                }
                 return Ok(ChatCompletionRequestAssistantMessage::from(self.text).into());
             }
             Role::Tool => {
-                let cm = ChatCompletionRequestToolMessage::default().into();
-                return Ok(cm);
+                let tool_call_id = self
+                    .tool_call_id
+                    .ok_or_else(|| "Role::Tool 消息缺少 tool_call_id".to_string())?;
+                let cm = ChatCompletionRequestToolMessageArgs::default()
+                    .tool_call_id(tool_call_id)
+                    .content(self.text)
+                    .build()?;
+                return Ok(cm.into());
             }
         }
     }
