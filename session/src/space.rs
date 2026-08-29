@@ -101,8 +101,8 @@ impl<S: SessionStore> SessionSpace<S> {
         Ok(())
     }
 
-    /// 显式落盘:会话在 store 中已存在则覆写,否则创建。刷新 `updated_at`。
-    pub async fn persist(&mut self) -> Result<(), SessionError> {
+    /// 落盘实现(不做只读检查):会话在 store 中已存在则覆写,否则创建。刷新 `updated_at`。
+    async fn persist_inner(&mut self) -> Result<(), SessionError> {
         self.session.touch();
         match self.store.get(self.session.id).await? {
             Some(_) => self.store.save(&self.session).await?,
@@ -111,10 +111,19 @@ impl<S: SessionStore> SessionSpace<S> {
         Ok(())
     }
 
+    /// 显式落盘:会话在 store 中已存在则覆写,否则创建。刷新 `updated_at`。
+    /// 非原子(get→判→写);两空间并发首写可能一方报 `AlreadyExists`,重试即可落入 save 分支。
+    /// 已关闭会话返回 `SessionError::Closed`(只读)。
+    pub async fn persist(&mut self) -> Result<(), SessionError> {
+        self.ensure_writable()?;
+        self.persist_inner().await
+    }
+
     /// 关闭会话:置 `Closed` 并落盘,返回最终 `Session`。之后空间不可再写。
+    /// 落盘失败时返回错误,会话数据随 `self` 一并丢弃(可从 store 中最近一次持久化内容恢复)。
     pub async fn close(mut self) -> Result<Session, SessionError> {
         self.session.status = SessionStatus::Closed;
-        self.persist().await?;
+        self.persist_inner().await?;
         Ok(self.session)
     }
 }
@@ -181,6 +190,17 @@ mod tests {
         let again = store.get(id).await.unwrap().unwrap();
         assert_eq!(again.messages.len(), 2);
         assert_eq!(again.messages[1].text, "二");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn closed_session_persist_rejected() -> Result<(), SessionError> {
+        let store = Arc::new(InMemoryStore::new());
+        let space = SessionSpace::new(store.clone(), "t");
+        let closed = space.close().await.unwrap();
+        let mut resumed = SessionSpace::resume(store.clone(), closed);
+        let err = resumed.persist().await.unwrap_err();
+        assert!(matches!(err, SessionError::Closed(_)));
         Ok(())
     }
 }
