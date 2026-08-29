@@ -29,7 +29,7 @@ async fn atomic_write(path: &Path, session: &Session) -> Result<(), SessionError
         tokio::fs::create_dir_all(parent).await?;
     }
     let json = serde_json::to_vec_pretty(session)?;
-    let tmp = path.with_extension("json.tmp");
+    let tmp = path.with_extension(format!("json.tmp.{}", Uuid::now_v7()));
     {
         let mut f = tokio::fs::File::create(&tmp).await?;
         f.write_all(&json).await?;
@@ -66,7 +66,7 @@ impl SessionStore for FileStore {
 
     async fn save(&self, session: &Session) -> Result<(), SessionError> {
         let path = self.path_for(session.id);
-        if !path.exists() {
+        if !tokio::fs::try_exists(&path).await? {
             return Err(SessionError::NotFound(session.id));
         }
         atomic_write(&path, session).await

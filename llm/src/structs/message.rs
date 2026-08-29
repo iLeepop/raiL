@@ -127,7 +127,6 @@ impl Message {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::traits::ToolCall;
 
     #[test]
     fn message_serde_roundtrip() {
