@@ -67,30 +67,54 @@ impl<S: SessionStore> SessionSpace<S> {
     }
 
     /// 记录工具被调用
-    pub fn record_tool(&mut self, name: impl Into<String>, arguments: Value) -> Result<(), SessionError> {
+    pub fn record_tool(
+        &mut self,
+        name: impl Into<String>,
+        arguments: Value,
+    ) -> Result<(), SessionError> {
         self.ensure_writable()?;
-        self.session.events.push(SessionEvent::tool(name, arguments));
+        self.session
+            .events
+            .push(SessionEvent::tool(name, arguments));
         Ok(())
     }
 
     /// 记录工具成功结果
-    pub fn record_tool_result(&mut self, name: impl Into<String>, result: Value) -> Result<(), SessionError> {
+    pub fn record_tool_result(
+        &mut self,
+        name: impl Into<String>,
+        result: Value,
+    ) -> Result<(), SessionError> {
         self.ensure_writable()?;
-        self.session.events.push(SessionEvent::tool_result(name, result));
+        self.session
+            .events
+            .push(SessionEvent::tool_result(name, result));
         Ok(())
     }
 
     /// 记录工具失败
-    pub fn record_tool_error(&mut self, name: impl Into<String>, error: impl Into<String>) -> Result<(), SessionError> {
+    pub fn record_tool_error(
+        &mut self,
+        name: impl Into<String>,
+        error: impl Into<String>,
+    ) -> Result<(), SessionError> {
         self.ensure_writable()?;
-        self.session.events.push(SessionEvent::tool_error(name, error));
+        self.session
+            .events
+            .push(SessionEvent::tool_error(name, error));
         Ok(())
     }
 
     /// 记录阶段检查点
-    pub fn checkpoint(&mut self, label: impl Into<String>, data: Value) -> Result<(), SessionError> {
+    pub fn checkpoint(
+        &mut self,
+        label: impl Into<String>,
+        data: Value,
+    ) -> Result<(), SessionError> {
         self.ensure_writable()?;
-        self.session.events.push(SessionEvent::checkpoint(label, data));
+        self.session
+            .events
+            .push(SessionEvent::checkpoint(label, data));
         Ok(())
     }
 
@@ -169,7 +193,9 @@ mod tests {
         let mut resumed = SessionSpace::resume(store.clone(), closed);
         let err = resumed.push(Message::new(Role::User, "x")).unwrap_err();
         assert!(matches!(err, SessionError::Closed(_)));
-        let err2 = resumed.record(SessionEvent::custom("x", serde_json::json!(1))).unwrap_err();
+        let err2 = resumed
+            .record(SessionEvent::custom("x", serde_json::json!(1)))
+            .unwrap_err();
         assert!(matches!(err2, SessionError::Closed(_)));
         // 只读访问仍可用
         assert_eq!(resumed.title(), "t");

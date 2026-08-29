@@ -14,10 +14,18 @@ async fn exercise_store<S: SessionStore>(store: Arc<S>) {
     // round-trip:写 → 持久化 → 读
     let mut space = SessionSpace::new(store.clone(), "订单助手")
         .with_meta("model", serde_json::json!("Qwen2.5-72B"));
-    space.push(Message::new(Role::User, "帮我查订单 #1024")).unwrap();
-    space.record_tool("search_order", serde_json::json!({"id": "1024"})).unwrap();
-    space.record_tool_result("search_order", serde_json::json!({"status": "shipped"})).unwrap();
-    space.checkpoint("fetched", serde_json::json!({"took_ms": 12})).unwrap();
+    space
+        .push(Message::new(Role::User, "帮我查订单 #1024"))
+        .unwrap();
+    space
+        .record_tool("search_order", serde_json::json!({"id": "1024"}))
+        .unwrap();
+    space
+        .record_tool_result("search_order", serde_json::json!({"status": "shipped"}))
+        .unwrap();
+    space
+        .checkpoint("fetched", serde_json::json!({"took_ms": 12}))
+        .unwrap();
     space.persist().await.unwrap();
     let id = space.id();
 
@@ -26,11 +34,17 @@ async fn exercise_store<S: SessionStore>(store: Arc<S>) {
     assert!(matches!(loaded.messages[0].role, Role::User));
     assert_eq!(loaded.messages[0].text, "帮我查订单 #1024");
     assert_eq!(loaded.events.len(), 3);
-    assert_eq!(loaded.metadata.get("model"), Some(&serde_json::json!("Qwen2.5-72B")));
+    assert_eq!(
+        loaded.metadata.get("model"),
+        Some(&serde_json::json!("Qwen2.5-72B"))
+    );
 
     // title contains 检索 + 摘要计数
     let found = store
-        .list(&SessionQuery { title: Some("订单".into()), ..Default::default() })
+        .list(&SessionQuery {
+            title: Some("订单".into()),
+            ..Default::default()
+        })
         .await
         .unwrap();
     assert_eq!(found.len(), 1);
@@ -70,7 +84,10 @@ async fn file_store_survives_restart() {
     // 新实例模拟进程重启
     let store = Arc::new(FileStore::new(dir.path()));
     let list = store
-        .list(&SessionQuery { title: Some("重启".into()), ..Default::default() })
+        .list(&SessionQuery {
+            title: Some("重启".into()),
+            ..Default::default()
+        })
         .await
         .unwrap();
     assert_eq!(list.len(), 1);
@@ -99,14 +116,22 @@ async fn list_filters_status_and_paginates() {
 
     // status 过滤
     let active = store
-        .list(&SessionQuery { status: Some(SessionStatus::Active), ..Default::default() })
+        .list(&SessionQuery {
+            status: Some(SessionStatus::Active),
+            ..Default::default()
+        })
         .await
         .unwrap();
     assert_eq!(active.len(), 3);
 
     // title 过滤 + 分页
     let page = store
-        .list(&SessionQuery { title: Some("批量".into()), limit: 2, offset: 1, ..Default::default() })
+        .list(&SessionQuery {
+            title: Some("批量".into()),
+            limit: 2,
+            offset: 1,
+            ..Default::default()
+        })
         .await
         .unwrap();
     assert_eq!(page.len(), 2);

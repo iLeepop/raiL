@@ -34,23 +34,45 @@ pub enum SessionEvent {
 
 impl SessionEvent {
     pub fn tool(name: impl Into<String>, arguments: Value) -> Self {
-        Self::ToolCalled { tool: name.into(), arguments, occurred_at: Utc::now() }
+        Self::ToolCalled {
+            tool: name.into(),
+            arguments,
+            occurred_at: Utc::now(),
+        }
     }
 
     pub fn tool_result(name: impl Into<String>, result: Value) -> Self {
-        Self::ToolResult { tool: name.into(), result, error: None, occurred_at: Utc::now() }
+        Self::ToolResult {
+            tool: name.into(),
+            result,
+            error: None,
+            occurred_at: Utc::now(),
+        }
     }
 
     pub fn tool_error(name: impl Into<String>, error: impl Into<String>) -> Self {
-        Self::ToolResult { tool: name.into(), result: Value::Null, error: Some(error.into()), occurred_at: Utc::now() }
+        Self::ToolResult {
+            tool: name.into(),
+            result: Value::Null,
+            error: Some(error.into()),
+            occurred_at: Utc::now(),
+        }
     }
 
     pub fn checkpoint(label: impl Into<String>, data: Value) -> Self {
-        Self::Checkpoint { label: label.into(), data, occurred_at: Utc::now() }
+        Self::Checkpoint {
+            label: label.into(),
+            data,
+            occurred_at: Utc::now(),
+        }
     }
 
     pub fn custom(kind: impl Into<String>, data: Value) -> Self {
-        Self::Custom { kind: kind.into(), data, occurred_at: Utc::now() }
+        Self::Custom {
+            kind: kind.into(),
+            data,
+            occurred_at: Utc::now(),
+        }
     }
 }
 
@@ -64,7 +86,11 @@ mod tests {
         let json = serde_json::to_string(&ev).unwrap();
         let back: SessionEvent = serde_json::from_str(&json).unwrap();
         match back {
-            SessionEvent::ToolCalled { tool, arguments, occurred_at } => {
+            SessionEvent::ToolCalled {
+                tool,
+                arguments,
+                occurred_at,
+            } => {
                 assert_eq!(tool, "search");
                 assert_eq!(arguments, serde_json::json!({"q": "订单"}));
                 assert!(occurred_at.timestamp() > 0);

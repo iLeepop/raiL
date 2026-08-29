@@ -37,10 +37,10 @@ async fn atomic_write(path: &Path, session: &Session) -> Result<(), SessionError
     }
     tokio::fs::rename(&tmp, path).await?;
     // fsync 父目录使 rename 持久化(断电后不丢文件);部分平台不支持目录 fsync,失败忽略
-    if let Some(parent) = path.parent() {
-        if let Ok(dir) = std::fs::File::open(parent) {
-            let _ = dir.sync_all();
-        }
+    if let Some(parent) = path.parent()
+        && let Ok(dir) = std::fs::File::open(parent)
+    {
+        let _ = dir.sync_all();
     }
     Ok(())
 }
@@ -152,7 +152,9 @@ mod tests {
         store.create(&s).await.unwrap();
         // 目录里塞入无关文件与一次原子写失败的 .tmp 残留
         let other = Uuid::now_v7();
-        tokio::fs::write(dir.path().join("readme.txt"), "hello").await.unwrap();
+        tokio::fs::write(dir.path().join("readme.txt"), "hello")
+            .await
+            .unwrap();
         tokio::fs::write(
             dir.path().join(format!("{other}.json.tmp")),
             "{\"partial\":true}",

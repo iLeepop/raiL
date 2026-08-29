@@ -100,7 +100,8 @@ mod tests {
         let mut s = Session::new("t");
         s.messages.push(Message::new(Role::User, "hi"));
         s.messages.push(Message::new(Role::Assistant, "yo"));
-        s.events.push(SessionEvent::checkpoint("c", serde_json::json!(null)));
+        s.events
+            .push(SessionEvent::checkpoint("c", serde_json::json!(null)));
         let sum = SessionSummary::from(&s);
         assert_eq!(sum.id, s.id);
         assert_eq!(sum.title, "t");
@@ -113,7 +114,8 @@ mod tests {
     fn session_json_roundtrip() {
         let mut s = Session::new("roundtrip");
         s.messages.push(Message::new(Role::User, "hi"));
-        s.events.push(SessionEvent::tool("calc", serde_json::json!({"x": 1})));
+        s.events
+            .push(SessionEvent::tool("calc", serde_json::json!({"x": 1})));
         s.metadata.insert("model".into(), serde_json::json!("m1"));
         let json = serde_json::to_string(&s).unwrap();
         let back: Session = serde_json::from_str(&json).unwrap();
