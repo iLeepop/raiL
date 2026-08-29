@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 /// 会话内一次操作留痕。消息走 `Session::messages`,`SessionEvent` 记录非消息操作。
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum SessionEvent {
     /// 工具被调用
     ToolCalled {

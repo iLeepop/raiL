@@ -16,9 +16,7 @@ pub enum SessionStatus {
 }
 
 /// 会话聚合:消息 + 操作留痕 + 检索元数据
-///
-/// 注意:未 derive `Debug`——`llm::Message` 未实现 `Debug`。
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Session {
     pub id: Uuid,
     pub title: String,
@@ -123,5 +121,9 @@ mod tests {
         assert_eq!(back.messages.len(), 1);
         assert_eq!(back.events.len(), 1);
         assert_eq!(back.metadata.get("model"), Some(&serde_json::json!("m1")));
+        assert_eq!(back.id, s.id);
+        assert_eq!(back.status, s.status);
+        assert_eq!(back.created_at, s.created_at);
+        assert_eq!(back.updated_at, s.updated_at);
     }
 }

@@ -17,7 +17,7 @@ use crate::enums::Role;
 use crate::traits::ToolCall;
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Message {
     pub role: Role,
     pub text: String,
