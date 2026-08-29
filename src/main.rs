@@ -1,18 +1,29 @@
+use agent::config::Config;
+use llm::Provider;
+use rai_l::interactive;
+
 #[tokio::main]
-async fn main() {
-    println!("Hello RaiLLM")
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    dotenvy::dotenv().ok();
+
+    let config = Config::default()
+        .with_default_provider(Provider::DEEPSEEK)
+        .with_default_model("deepseek-v4-flash")
+        .with_max_history_len(40);
+
+    interactive::run_terminal(config, interactive::demo_tools()).await
 }
 
 #[cfg(test)]
 mod tests {
 
     use agent::{
-        agent::{BaseAgent, FunctionCallAgent},
+        agent::BaseAgent,
         config::Config,
-        core::{Agent, ToolParameters, ToolRegister},
+        core::{Agent, ToolRegister},
     };
     use base64::{Engine, engine::general_purpose::STANDARD};
-    use llm::{Message, Provider, RaiLLM, RaiLLMArgs, Role, Think};
+    use llm::{Message, Provider, RaiLLM, Role, Think};
 
     #[tokio::main]
     #[test]
@@ -80,109 +91,6 @@ mod tests {
             }
             Err(e) => {
                 eprintln!("{:#?}", e);
-            }
-        }
-    }
-
-    /// 终端交互会话:FunctionCall 范式,支持多轮对话与工具调用。
-    /// 运行方式:`cargo test interactive_session -- --nocapture`(需要真实模型配置)。
-    #[tokio::main]
-    #[test]
-    async fn interactive_session() {
-        use std::io::Write;
-
-        dotenvy::dotenv().ok();
-
-        // 演示工具:返回当前 Unix 时间戳
-        let mut tools = ToolRegister::new();
-        tools.register(
-            "now",
-            "获取当前的 Unix 时间戳(秒)",
-            ToolParameters::new(serde_json::json!({
-                "type": "object",
-                "properties": {},
-                "additionalProperties": false,
-            })),
-            |_: serde_json::Value| async move {
-                let secs = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap()
-                    .as_secs();
-                Ok(serde_json::json!({ "timestamp": secs }))
-            },
-        );
-
-        let config = Config::default()
-            .with_default_provider(Provider::DEEPSEEK)
-            .with_default_model("deepseek-v4-flash")
-            .with_max_history_len(40);
-
-        let llm = RaiLLMArgs::default()
-            .with_provider(config.default_provider)
-            .with_model_id(config.default_model.clone().unwrap())
-            .with_api_key(config.default_api_key.clone())
-            .with_base_url(config.default_base_url.clone())
-            .build()
-            .expect("RaiLLM 初始化失败");
-
-        let system_prompt = FunctionCallAgent::<RaiLLM>::DEFAULT_SYSTEM_PROMPT;
-        // 会话历史由 agent 内部维护(run_stream 自动记录 user/assistant 消息),
-        // 实例只建一次,跨轮复用,无需重建
-        let mut agent = FunctionCallAgent::from_parts(
-            "interactive",
-            system_prompt,
-            config.clone(),
-            llm.clone(),
-            tools.clone(),
-        );
-
-        println!("=== 交互会话开始,输入 exit / quit / 退出 结束 ===");
-        loop {
-            print!("你: ");
-            std::io::stdout().flush().unwrap();
-
-            let mut input = String::new();
-            match std::io::stdin().read_line(&mut input) {
-                Ok(0) => {
-                    // Ctrl-D / EOF
-                    println!("\n会话结束。");
-                    break;
-                }
-                Ok(_) => {}
-                Err(e) => {
-                    eprintln!("读取输入失败: {e}");
-                    break;
-                }
-            }
-
-            let input = input.trim();
-            if input.is_empty() {
-                continue;
-            }
-            if matches!(input, "exit" | "quit" | "q" | "退出" | "再见") {
-                println!("会话结束。");
-                break;
-            }
-
-            print!("Agent: ");
-            std::io::stdout().flush().unwrap();
-            match agent
-                .run_stream(input.to_string(), |delta| {
-                    print!("{delta}");
-                    std::io::stdout().flush().unwrap();
-                })
-                .await
-            {
-                Ok(_) => {
-                    println!("\n");
-                    // 本轮 user/assistant 已由 run_stream 记入历史,按配置裁剪,防止上下文无限膨胀
-                    if let Some(limit) = config.max_history_len {
-                        agent.truncate(limit as usize);
-                    }
-                }
-                Err(e) => {
-                    eprintln!("Agent 出错: {e}");
-                }
             }
         }
     }

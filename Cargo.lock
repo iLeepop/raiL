@@ -1140,6 +1140,7 @@ dependencies = [
  "dotenvy",
  "llm",
  "serde_json",
+ "session",
  "tokio",
 ]
 

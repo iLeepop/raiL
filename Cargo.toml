@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 llm = { path = "./llm" }
 agent = {path = "./agent"}
+session = { path = "./session" }
 tokio = { version = "1", features = ["full"] }
 base64 = "0.22"
 dotenvy = "0.15"
